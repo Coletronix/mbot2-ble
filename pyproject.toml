@@ -1,0 +1,26 @@
+[project]
+name = "mbot2"
+version = "0.1.0"
+description = "Upload MicroPython programs to a Makeblock mBot2 / CyberPi over Bluetooth LE"
+readme = "README.md"
+license = "MIT"
+keywords = ["makeblock", "mbot2", "cyberpi", "micropython", "bluetooth", "ble"]
+authors = [
+    { name = "Coletronix" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "bleak>=3.1.0",
+]
+
+[project.scripts]
+mbot2 = "mbot2:main"
+
+[build-system]
+requires = ["uv_build>=0.11.21,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+]
