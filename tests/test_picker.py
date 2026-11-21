@@ -29,7 +29,13 @@ def test_parse_rejects_ambiguous_and_unknown():
     assert parse_choice("ZZZZ", [A, B]).action == "invalid"
     assert parse_choice("3", [A, B]).action == "invalid"
     assert parse_choice("0", [A]).action == "invalid"
-    assert parse_choice("", [A]).action == "invalid"  # Enter never picks, even with one robot
+    assert parse_choice("", [A]).action == "invalid"  # Enter never picks a robot that wasn't used before
+    assert parse_choice("", [A], last_used=B.address).action == "invalid"  # last-used robot not in range
+
+
+def test_enter_reuses_last_used_robot():
+    assert parse_choice("", [A, B], last_used=B.address).index == 1
+    assert parse_choice("  ", [B], last_used=B.address).index == 0
 
 
 def test_parse_rescan_quit():
@@ -43,7 +49,7 @@ def test_list_marks_last_used():
     assert "1) Makeblock_LE5443B213427A" in out and "last used" in out.splitlines()[1]
 
 
-def run_picker(answers, scans):
+def run_picker(answers, scans, last_used=None):
     answers, scans = list(answers), list(scans)
 
     async def ask(_):
@@ -54,12 +60,13 @@ def run_picker(answers, scans):
     async def find():
         return scans.pop(0)
 
-    return asyncio.run(pick_robot(None, ask=ask, find=find))
+    return asyncio.run(pick_robot(last_used, ask=ask, find=find))
 
 
 def test_single_robot_still_requires_a_choice():
-    # Enter alone doesn't pick the only robot; an explicit "1" does.
+    # Enter alone doesn't pick the only robot if it wasn't used before; an explicit "1" does.
     assert run_picker(["", "1"], [[A]]) is A
+    assert run_picker([""], [[A, B]], last_used=A.address) is A
 
 
 def test_rescan_then_pick_by_name():

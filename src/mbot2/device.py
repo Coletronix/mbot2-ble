@@ -97,7 +97,12 @@ class Robot:
         self.disconnected = asyncio.Event()
         self.write_size = WRITE_SIZE
         self.closed = False
-        self.write_response = os.environ.get("MBOT2_WRITE_RESPONSE", "0") != "0"
+        # Unacknowledged writes are ~3x faster and work with BlueZ, but Windows was seen silently
+        # dropping them for this robot, so elsewhere default to acknowledged writes. Either way,
+        # transact() switches to acknowledged writes if a command goes unanswered.
+        env = os.environ.get("MBOT2_WRITE_RESPONSE")
+        self.write_response = (env != "0") if env is not None else not sys.platform.startswith("linux")
+        self._response_forced = env is not None
         self.debug = os.environ.get("MBOT2_DEBUG", "0") != "0"
         self.rebooting = asyncio.Event()  # board printed "PYB: ... reboot" or sent its ready frame
         self._idx = 0
@@ -180,7 +185,9 @@ class Robot:
     async def transact(
         self, data: bytes, match: Callable[[P.Frame], bool], label: str, timeout: float = 3.0, retries: int = 3
     ) -> P.Frame:
-        for attempt in range(1, retries + 1):
+        attempt = 0
+        while attempt < retries:
+            attempt += 1
             while not self.frames.empty():  # drop stale replies
                 self.frames.get_nowait()
             await self.write(data)
@@ -195,6 +202,12 @@ class Robot:
                 self.dlog(f"ignored frame while waiting for {label}: {f.body[:24].hex(' ')}")
             if self.disconnected.is_set():
                 raise RobotError(f"Robot disconnected during {label}.")
+            if not self.write_response and not self._response_forced:
+                # Some OS Bluetooth stacks drop unacknowledged writes; this retry doesn't count.
+                self.write_response = True
+                attempt -= 1
+                self.log(f"  {label}: no reply; switching to acknowledged Bluetooth writes")
+                continue
             self.log(f"  {label}: no reply (attempt {attempt}/{retries})")
         raise RobotError(
             f"No reply from the robot for {label}. Make sure the mBot2's battery switch is on: with only "

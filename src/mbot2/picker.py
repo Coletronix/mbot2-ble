@@ -31,7 +31,7 @@ def _norm(s: str) -> str:
     return s.lower().replace(":", "").replace("-", "").replace("_", "").replace(" ", "")
 
 
-def parse_choice(text: str, robots: list[Found]) -> Choice:
+def parse_choice(text: str, robots: list[Found], last_used: str | None = None) -> Choice:
     t = text.strip()
     low = t.lower()
     if low in ("q", "quit", "exit"):
@@ -39,6 +39,10 @@ def parse_choice(text: str, robots: list[Found]) -> Choice:
     if low in ("r", "rescan", "scan") or (not t and not robots):
         return Choice("rescan")
     if not t:
+        # Enter reuses the robot this computer used last, but only if it's in range right now.
+        for i, r in enumerate(robots):
+            if last_used and r.address == last_used:
+                return Choice("pick", i)
         return Choice("invalid", message="Type a number from the list or part of your robot's name.")
     if t.isdigit() and len(t) <= 2:
         n = int(t)
@@ -88,6 +92,9 @@ async def pick_robot(
                 eprint(f"Found {len(robots)} robot{'s' if len(robots) != 1 else ''}:")
                 eprint(format_list(robots, last_used))
                 eprint(HELP)
+                last = next((r for r in robots if r.address == last_used), None)
+                if last:
+                    eprint(f"Press Enter to use {last.name} again (last used on this computer).")
             else:
                 eprint("No robots found. Is yours switched on (battery switch) and not connected to mBlock?")
                 eprint("Press Enter to scan again, 'q' to quit.")
@@ -95,7 +102,7 @@ async def pick_robot(
             answer = await ask("Your robot: ")
         except EOFError:
             raise RobotError("No robot chosen.")
-        c = parse_choice(answer, robots)
+        c = parse_choice(answer, robots, last_used)
         if c.action == "quit":
             raise RobotError("No robot chosen.")
         if c.action == "rescan":

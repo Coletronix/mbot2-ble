@@ -77,7 +77,8 @@ Your robot: 427a
 ```
 
 Each robot's name is printed on its side; type the list number or the last few characters
-of that name. Enter on its own never picks a robot.
+of that name. Pressing Enter reuses the robot this computer used last, but only if
+that robot is in the list right now; otherwise Enter does nothing.
 
 To skip the list:
 
@@ -89,8 +90,8 @@ To skip the list:
 When there's no terminal to ask in (scripts, editor tasks that don't take input), you must
 pass `-d`, set `$MBOT2_DEVICE`, or use `--auto`. The tool never guesses. The last robot
 used (stored in `~/.config/mbot2/config.json`, or `%APPDATA%\mbot2\config.json` on
-Windows) is only marked in the list, never chosen automatically. On a shared computer it may
-be another student's.
+Windows) is marked in the list and is what Enter picks, but it's never used without someone pressing
+a key. On a shared computer it may be another student's, so check the name.
 
 ## Things to know
 
@@ -107,10 +108,11 @@ be another student's.
   on for each connection; it resets when the robot restarts.
 - Don't `eval` filesystem calls (`os.listdir`…) or import internal modules
   such as `internal_lib`. Both crash/restart the board from the protocol handler.
-- Uploads use 64-byte Bluetooth writes on Linux and 20-byte writes elsewhere, because
-  the robot rejects writes over 64 bytes and other OSes may not have negotiated a big enough
-  packet size yet. Override with `MBOT2_WRITE_SIZE=…`; `MBOT2_WRITE_RESPONSE=1` makes each write
-  wait for an acknowledgement (slower).
+- Bluetooth writes: on Linux, 64-byte writes that the robot doesn't acknowledge (fastest).
+  Elsewhere, 20-byte acknowledged writes, because Windows was seen silently dropping
+  unacknowledged ones and the robot rejects writes over 64 bytes. If a command goes
+  unanswered with unacknowledged writes, the tool switches to acknowledged ones by itself.
+  Override with `MBOT2_WRITE_RESPONSE=0|1` and `MBOT2_WRITE_SIZE=N`.
 - Problems? Run with `-v` (e.g. `mbot2 -v upload prog.py`) to log the connection settings
   and every packet, and include that output in a bug report.
 - Only one BLE client at a time: close mBlock first. On Windows, if a robot was
