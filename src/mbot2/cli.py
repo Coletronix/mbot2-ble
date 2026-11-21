@@ -214,6 +214,10 @@ def build_parser() -> argparse.ArgumentParser:
         "-d", "--device",
         help="robot address or name fragment (default: $MBOT2_DEVICE, then the last robot used, then the strongest nearby)",
     )
+    p.add_argument(
+        "-v", "--verbose", action="store_true",
+        help="log connection settings and every Bluetooth packet (for bug reports)",
+    )
     sub = p.add_subparsers(dest="cmd", required=True)
 
     s = sub.add_parser("scan", help="list Makeblock robots nearby")
@@ -263,6 +267,8 @@ def _safe_streams() -> None:
 def main(argv: list[str] | None = None) -> int:
     _safe_streams()
     args = build_parser().parse_args(argv)
+    if args.verbose:
+        os.environ["MBOT2_DEBUG"] = "1"
     try:
         return asyncio.run(args.func(args))
     except KeyboardInterrupt:

@@ -22,8 +22,18 @@ NAME_PREFIX = "Makeblock"
 # The robot's write characteristic accepts at most 64 bytes per write regardless of MTU
 # (larger writes fail with "Invalid Attribute Value Length"); mBlock uses 64 as well.
 WRITE_SIZE = 64
+SAFE_WRITE_SIZE = 20  # always fits one ATT packet (minimum MTU 23)
 
 warnings.filterwarnings("ignore", message="Using default MTU")
+
+
+def _bleak_version() -> str:
+    try:
+        from importlib.metadata import version
+
+        return version("bleak")
+    except Exception:
+        return "?"
 
 
 class RobotError(RuntimeError):
@@ -93,6 +103,7 @@ class Robot:
         self.write_size = WRITE_SIZE
         self.closed = False
         self.write_response = os.environ.get("MBOT2_WRITE_RESPONSE", "0") != "0"
+        self.debug = os.environ.get("MBOT2_DEBUG", "0") != "0"
         self.rebooting = asyncio.Event()  # board printed "PYB: ... reboot" or sent its ready frame
         self._idx = 0
 
@@ -110,15 +121,30 @@ class Robot:
         self.log(f"Connecting to {name}...")
         self.client = BleakClient(dev, timeout=20, disconnected_callback=lambda c: self.disconnected.set())
         await self.client.connect()
+        self.write_size = SAFE_WRITE_SIZE
         if sys.platform.startswith("linux"):
-            try:  # BlueZ only: make sure the MTU exchange happened so 64-byte writes fit
+            # BlueZ: run the MTU exchange explicitly; then 64-byte writes (the robot's maximum,
+            # verified on hardware) are safe and ~3x faster.
+            try:
                 await self.client._backend._acquire_mtu()  # type: ignore[attr-defined]
+                self.write_size = max(SAFE_WRITE_SIZE, min(WRITE_SIZE, self.client.mtu_size - 3))
             except Exception:
                 pass
-        # Windows/macOS negotiate the MTU themselves; fall back to 20-byte writes if it is small.
-        self.write_size = max(20, min(WRITE_SIZE, self.client.mtu_size - 3))
+        # Elsewhere the reported MTU may not be what was negotiated yet, and an oversized write
+        # gets split or dropped by the OS, so the robot never sees a whole frame. Stay at 20.
+        if os.environ.get("MBOT2_WRITE_SIZE"):
+            self.write_size = max(1, min(WRITE_SIZE, int(os.environ["MBOT2_WRITE_SIZE"])))
         await self.client.start_notify(NOTIFY, self._on_notify)
         self.log(f"Connected ({self.client.address}).")
+        self.dlog(
+            f"platform={sys.platform} python={sys.version.split()[0]} bleak={_bleak_version()} "
+            f"mtu={self.client.mtu_size} "
+            f"write_size={self.write_size} write_response={self.write_response}"
+        )
+
+    def dlog(self, msg: str) -> None:
+        if self.debug:
+            print(f"[debug {time.monotonic():.3f}] {msg}", file=sys.stderr, flush=True)
 
     async def close(self) -> None:
         self.closed = True  # BlueZ may keep delivering to a stale handler after a reconnect
@@ -133,6 +159,7 @@ class Robot:
         return self.client.address if self.client else ""
 
     def _on_notify(self, _char, data: bytearray) -> None:
+        self.dlog(f"RX {bytes(data).hex(' ')}" + (" (stale session)" if self.closed else ""))
         if not self.closed:
             self.reader.feed(bytes(data))
 
@@ -151,7 +178,9 @@ class Robot:
         if not self.client or not self.client.is_connected:
             raise RobotError("Bluetooth connection to the robot was lost.")
         for i in range(0, len(data), self.write_size):
-            await self.client.write_gatt_char(WRITE, data[i : i + self.write_size], response=self.write_response)
+            piece = data[i : i + self.write_size]
+            self.dlog(f"TX {piece.hex(' ')}")
+            await self.client.write_gatt_char(WRITE, piece, response=self.write_response)
 
     async def transact(
         self, data: bytes, match: Callable[[P.Frame], bool], label: str, timeout: float = 3.0, retries: int = 3
@@ -168,6 +197,7 @@ class Robot:
                     break
                 if match(f):
                     return f
+                self.dlog(f"ignored frame while waiting for {label}: {f.body[:24].hex(' ')}")
             if self.disconnected.is_set():
                 raise RobotError(f"Robot disconnected during {label}.")
             self.log(f"  {label}: no reply (attempt {attempt}/{retries})")

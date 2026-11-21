@@ -79,6 +79,12 @@ Robot selection: `-d ADDRESS` or `-d NAMEFRAGMENT` (e.g. `-d 427a`), else
   on for each connection; it resets when the robot restarts.
 - Don't `eval` filesystem calls (`os.listdir`…) or import internal modules
   such as `internal_lib`. Both crash/restart the board from the protocol handler.
+- Uploads use 64-byte Bluetooth writes on Linux and 20-byte writes elsewhere, because
+  the robot rejects writes over 64 bytes and other OSes may not have negotiated a big enough
+  packet size yet. Override with `MBOT2_WRITE_SIZE=…`; `MBOT2_WRITE_RESPONSE=1` makes each write
+  wait for an acknowledgement (slower).
+- Problems? Run with `-v` (e.g. `mbot2 -v upload prog.py`) to log the connection settings
+  and every packet, and include that output in a bug report.
 - Only one BLE client at a time: close mBlock first. On Windows, if a robot was
   paired in Bluetooth settings and won't connect, remove it there and try again.
 
