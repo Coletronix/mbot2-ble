@@ -52,17 +52,45 @@ For development, use `uv tool install --editable .` or run in place with
 
 | command | what it does |
 |---|---|
-| `mbot2 scan` | list Makeblock robots nearby (`*` = remembered one) |
+| `mbot2 scan` | list Makeblock robots nearby |
 | `mbot2 upload FILE [-m]` | upload FILE as the robot's program, restart, optionally monitor output |
 | `mbot2 monitor` | stream the running program's `print()` output (reconnects across restarts) |
 | `mbot2 eval EXPR` | evaluate an expression on the robot, print the result |
 | `mbot2 exec CODE` | run a snippet on the robot |
 | `mbot2 reset` | restart the robot |
-| `mbot2 forget` | forget the remembered robot |
+| `mbot2 forget` | clear the "last used" mark |
 
-Robot selection: `-d ADDRESS` or `-d NAMEFRAGMENT` (e.g. `-d 427a`), else
-`$MBOT2_DEVICE`, else the last robot used (stored in
-`~/.config/mbot2/config.json`, or `%APPDATA%\mbot2\config.json` on Windows), else the strongest one nearby.
+### Choosing the robot
+
+By default every command asks which robot to use, **even when only one is in range**. In
+a classroom, the only robot in range may belong to someone else, and uploading to it
+silently would overwrite their program.
+
+```console
+$ mbot2 upload my_program.py
+Scanning for robots...
+Found 2 robots:
+  1) Makeblock_LE5443B213427A   signal ###.  54:43:B2:13:42:7A   <- last used on this computer
+  2) Makeblock_LE5443B2C3F100   signal ##..  54:43:B2:C3:F1:00
+Check the name printed on the side of YOUR robot. Type its number in the list, or the last few characters of its name. 'r' rescans, 'q' quits.
+Your robot: 427a
+```
+
+Each robot's name is printed on its side; type the list number or the last few characters
+of that name. Enter on its own never picks a robot.
+
+To skip the list:
+
+- `-d ADDRESS` or `-d NAMEFRAGMENT` (e.g. `-d 427a`), or set `$MBOT2_DEVICE`.
+- `--auto` / `-a` (or `$MBOT2_AUTO=1`): if exactly one robot is in range, use it without
+  asking. With several robots in range you still get the list. Handy at home; risky in
+  a classroom.
+
+When there's no terminal to ask in (scripts, editor tasks that don't take input), you must
+pass `-d`, set `$MBOT2_DEVICE`, or use `--auto`. The tool never guesses. The last robot
+used (stored in `~/.config/mbot2/config.json`, or `%APPDATA%\mbot2\config.json` on
+Windows) is only marked in the list, never chosen automatically. On a shared computer it may
+be another student's.
 
 ## Things to know
 

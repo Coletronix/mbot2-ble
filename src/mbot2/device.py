@@ -59,7 +59,8 @@ async def scan(timeout: float = 5.0) -> list[Found]:
 
 
 async def find(target: str | None, timeout: float = 8.0) -> BLEDevice | str:
-    """Resolve an address / name fragment / None (strongest robot) to a device."""
+    """Resolve an address or name fragment to a device. Choosing among several robots is the
+    CLI's job (an explicit picker), so a missing target is an error, never a guess."""
     if target and len(target) == 17 and target.count(":") == 5:
         dev = await BleakScanner.find_device_by_address(target, timeout=timeout)
         return dev or target  # BlueZ can often connect to a cached address anyway
@@ -74,13 +75,7 @@ async def find(target: str | None, timeout: float = 8.0) -> BLEDevice | str:
         if dev is None:
             raise RobotError(f"No mBot2/CyberPi matching '{target}' found over Bluetooth.")
         return dev
-    robots = await scan(min(timeout, 5.0))
-    if not robots:
-        raise RobotError(
-            "No mBot2/CyberPi found over Bluetooth. Is it switched on (battery switch on the mBot2), "
-            "and not connected to mBlock or another computer?"
-        )
-    return robots[0].device
+    raise RobotError("No robot selected.")
 
 
 class Robot:

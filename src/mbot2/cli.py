@@ -14,7 +14,8 @@ from pathlib import Path
 from bleak.exc import BleakError
 
 from . import protocol as P
-from .device import Robot, RobotError, eprint, find, scan
+from .device import Found, Robot, RobotError, eprint, scan
+from .picker import can_prompt, format_list, pick_robot
 
 def _config_dir() -> Path:
     if sys.platform == "win32" and os.environ.get("APPDATA"):
@@ -42,8 +43,40 @@ def save_config(**kw) -> None:
         pass
 
 
-def target_of(args) -> str | None:
-    return args.device or os.environ.get("MBOT2_DEVICE") or load_config().get("device")
+async def target_of(args):
+    """The robot to talk to. Never guesses: without -d/$MBOT2_DEVICE the user picks from a
+    list, even when only one robot is in range (it may be a classmate's). --auto skips the
+    list only when exactly one robot is in range."""
+    if getattr(args, "_device", None) is not None:  # first connection after picking: no rescan
+        dev, args._device = args._device, None
+        return dev
+    if getattr(args, "_target", None):
+        return args._target
+    explicit = args.device or os.environ.get("MBOT2_DEVICE")
+    if explicit:
+        args._target = explicit
+        return explicit
+    last_used = load_config().get("device")
+    chosen: Found | None = None
+    if args.auto or os.environ.get("MBOT2_AUTO", "0") != "0":
+        robots = await scan(5.0)
+        if len(robots) == 1:
+            chosen = robots[0]
+            eprint(f"--auto: using the only robot in range, {chosen.name} ({chosen.address}).")
+        elif not robots:
+            raise RobotError("--auto: no robots in range. Is yours switched on (battery switch)?")
+        else:
+            eprint(f"--auto: {len(robots)} robots in range, so you need to choose.")
+    if chosen is None:
+        if not can_prompt():
+            raise RobotError(
+                "Which robot? Not running in an interactive terminal, so I can't ask. "
+                "Pass -d ADDRESS (see `mbot2 scan`), set MBOT2_DEVICE, or use --auto."
+            )
+        chosen = await pick_robot(last_used)
+        eprint(f"Tip: next time, skip this list with  -d {chosen.address}")
+    args._target = chosen.address
+    return chosen.device
 
 
 # ------------------------------------------------------------------ output
@@ -105,11 +138,9 @@ async def cmd_scan(args) -> int:
     if not robots:
         eprint("No Makeblock robots found.")
         return 1
-    saved = load_config().get("device")
-    for r in robots:
-        mark = "*" if r.address == saved else " "
-        print(f"{mark} {r.address}  {r.name:<28} RSSI {r.rssi}")
+    print(format_list(robots, load_config().get("device")))
     return 0
+
 
 
 async def cmd_upload(args) -> int:
@@ -125,8 +156,8 @@ async def cmd_upload(args) -> int:
         eprint(f"warning: {path}: {p}")
 
     con = Console(quiet=True)
-    t0 = time.monotonic()
-    async with Robot(target_of(args), on_text=con.text, log=eprint) as robot:
+    async with Robot(await target_of(args), on_text=con.text, log=eprint) as robot:
+        t0 = time.monotonic()
         save_config(device=robot.address)
         eprint(f"Uploading {path.name} ({len(src)} bytes) as '{args.name}'...")
         sent = await robot.upload(src, args.name, progress_bar)
@@ -152,12 +183,14 @@ async def cmd_upload(args) -> int:
 async def monitor(args, reconnect_wait: float = 0.0) -> int:
     """Show the program's print() output (stdout is mirrored over BLE). Ctrl-C to quit."""
     con = Console()
+    if not getattr(args, "_target", None):  # choose once, up front; reconnects reuse the choice
+        args._device = await target_of(args)
     eprint("Monitoring robot output (Ctrl-C to stop).")
     while True:
         if reconnect_wait:
             await asyncio.sleep(reconnect_wait)
         try:
-            async with Robot(target_of(args), on_text=con.text, log=eprint) as robot:
+            async with Robot(await target_of(args), on_text=con.text, log=eprint) as robot:
                 save_config(device=robot.address)
                 await robot.enable_print()
                 await robot.disconnected.wait()
@@ -174,7 +207,7 @@ async def cmd_monitor(args) -> int:
 
 
 async def cmd_eval(args) -> int:
-    async with Robot(target_of(args), log=lambda s: None) as robot:
+    async with Robot(await target_of(args), log=lambda s: None) as robot:
         save_config(device=robot.address)
         result = await robot.eval(args.expr, timeout=args.timeout)
     print(json.dumps(result) if not isinstance(result, str) else result)
@@ -183,7 +216,7 @@ async def cmd_eval(args) -> int:
 
 async def cmd_exec(args) -> int:
     code = Path(args.file).read_text() if args.file else args.code
-    async with Robot(target_of(args), on_text=Console().text, log=lambda s: None) as robot:
+    async with Robot(await target_of(args), on_text=Console().text, log=lambda s: None) as robot:
         save_config(device=robot.address)
         await robot.enable_print()
         await robot.exec(code)
@@ -192,7 +225,7 @@ async def cmd_exec(args) -> int:
 
 
 async def cmd_reset(args) -> int:
-    async with Robot(target_of(args), log=eprint) as robot:
+    async with Robot(await target_of(args), log=eprint) as robot:
         ok = await robot.reboot()
     eprint("Restarted." if ok else "No restart seen.")
     return 0 if ok else 1
@@ -200,7 +233,7 @@ async def cmd_reset(args) -> int:
 
 async def cmd_forget(args) -> int:
     save_config(device=None)
-    eprint("Forgot the saved robot; the next command will pick the strongest one nearby.")
+    eprint("Forgot the last-used robot (it's no longer marked in the picker).")
     return 0
 
 
@@ -212,7 +245,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "-d", "--device",
-        help="robot address or name fragment (default: $MBOT2_DEVICE, then the last robot used, then the strongest nearby)",
+        help="robot address or name fragment; skips the robot picker (default: $MBOT2_DEVICE, else ask)",
+    )
+    p.add_argument(
+        "-a", "--auto", action="store_true",
+        help="if exactly one robot is in range, use it without asking ($MBOT2_AUTO=1 does the same). "
+        "Careful in classrooms: the only robot in range may not be yours",
     )
     p.add_argument(
         "-v", "--verbose", action="store_true",
@@ -250,7 +288,7 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("reset", aliases=["reboot"], help="restart the robot")
     s.set_defaults(func=cmd_reset)
 
-    s = sub.add_parser("forget", help="forget the remembered robot")
+    s = sub.add_parser("forget", help="forget the last-used robot")
     s.set_defaults(func=cmd_forget)
     return p
 
