@@ -17,28 +17,36 @@ heartbeat 1
 
 ## Requirements
 
-- **[uv](https://docs.astral.sh/uv/getting-started/installation/)**: installs the tool
-  and fetches a suitable Python (3.11+) by itself.
-  `curl -LsSf https://astral.sh/uv/install.sh | sh` (or your package manager,
-  e.g. `pacman -S uv`, `brew install uv`).
+- **[uv](https://docs.astral.sh/uv/getting-started/installation/)**: installs the tool and
+  downloads a suitable Python (3.11+) by itself. You don't need to install Python separately.
 - **git**, to clone this repository.
-- **A Bluetooth LE adapter.** On Linux, **BlueZ** with the `bluetooth` service running
-  (`sudo systemctl enable --now bluetooth`; `bluetoothctl show` should say
-  `Powered: yes`). No pairing is needed and no special permissions beyond
-  normal BlueZ access. Tested on Linux. [bleak](https://github.com/hbldh/bleak) also
-  supports macOS and Windows, but this tool hasn't been tested there.
+- **A Bluetooth LE adapter** (most laptops have one; desktops may need a USB dongle).
+  No pairing is needed.
 - An mBot2 / CyberPi with the mBot2's battery switch **on**.
+
+| | uv | git | Bluetooth |
+|---|---|---|---|
+| **Linux** | `curl -LsSf https://astral.sh/uv/install.sh \| sh` or your package manager (`pacman -S uv`) | package manager | BlueZ with the `bluetooth` service running: `sudo systemctl enable --now bluetooth`; `bluetoothctl show` should say `Powered: yes` |
+| **Windows 10 (1709+) / 11** | `winget install --id=astral-sh.uv -e` or `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 \| iex"` | `winget install --id Git.Git -e` | Settings → Bluetooth & devices → Bluetooth **On**. Don't pair the robot in Settings; the tool connects without pairing |
+| **macOS** | `brew install uv` or the install script | `xcode-select --install` | Allow your terminal app under System Settings → Privacy & Security → Bluetooth |
+
+Tested with a real robot on Linux. Windows and macOS use [bleak](https://github.com/hbldh/bleak)'s
+native backends; CI checks that the tool installs and runs on all three platforms.
 
 ## Install
 
 ```sh
 git clone https://github.com/Coletronix/mbot2-ble.git
 cd mbot2-ble
-uv tool install .                 # puts `mbot2` on your PATH (~/.local/bin)
+uv tool install .                 # puts `mbot2` on your PATH
 ```
 
+If your shell then says `mbot2` isn't found, run `uv tool update-shell` and open a
+new terminal. (On Windows the tool goes into `%USERPROFILE%\.local\bin`.)
+
+To update later: `git pull` then `uv tool install --reinstall .`
 For development, use `uv tool install --editable .` or run in place with
-`uv run mbot2 …`. Tests run with `uv run pytest`.
+`uv run mbot2 ...`. Tests run with `uv run pytest`.
 
 ## Commands
 
@@ -54,7 +62,7 @@ For development, use `uv tool install --editable .` or run in place with
 
 Robot selection: `-d ADDRESS` or `-d NAMEFRAGMENT` (e.g. `-d 427a`), else
 `$MBOT2_DEVICE`, else the last robot used (stored in
-`~/.config/mbot2/config.json`), else the strongest one nearby.
+`~/.config/mbot2/config.json`, or `%APPDATA%\mbot2\config.json` on Windows), else the strongest one nearby.
 
 ## Things to know
 
@@ -71,7 +79,8 @@ Robot selection: `-d ADDRESS` or `-d NAMEFRAGMENT` (e.g. `-d 427a`), else
   on for each connection; it resets when the robot restarts.
 - Don't `eval` filesystem calls (`os.listdir`…) or import internal modules
   such as `internal_lib`. Both crash/restart the board from the protocol handler.
-- Only one BLE client at a time: close mBlock first.
+- Only one BLE client at a time: close mBlock first. On Windows, if a robot was
+  paired in Bluetooth settings and won't connect, remove it there and try again.
 
 ## Protocol notes
 

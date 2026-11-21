@@ -107,13 +107,15 @@ class Robot:
     async def connect(self) -> None:
         dev = self.target if isinstance(self.target, BLEDevice) else await find(self.target)
         name = getattr(dev, "name", None) or getattr(dev, "address", dev)
-        self.log(f"Connecting to {name}…")
+        self.log(f"Connecting to {name}...")
         self.client = BleakClient(dev, timeout=20, disconnected_callback=lambda c: self.disconnected.set())
         await self.client.connect()
-        try:  # BlueZ: make sure the MTU exchange happened so 64-byte writes fit
-            await self.client._backend._acquire_mtu()  # type: ignore[attr-defined]
-        except Exception:
-            pass
+        if sys.platform.startswith("linux"):
+            try:  # BlueZ only: make sure the MTU exchange happened so 64-byte writes fit
+                await self.client._backend._acquire_mtu()  # type: ignore[attr-defined]
+            except Exception:
+                pass
+        # Windows/macOS negotiate the MTU themselves; fall back to 20-byte writes if it is small.
         self.write_size = max(20, min(WRITE_SIZE, self.client.mtu_size - 3))
         await self.client.start_notify(NOTIFY, self._on_notify)
         self.log(f"Connected ({self.client.address}).")

@@ -1,4 +1,4 @@
-"""mbot2 — upload MicroPython programs to a Makeblock mBot2 / CyberPi over Bluetooth LE."""
+"""mbot2: upload MicroPython programs to a Makeblock mBot2 / CyberPi over Bluetooth LE."""
 
 from __future__ import annotations
 
@@ -16,13 +16,19 @@ from bleak.exc import BleakError
 from . import protocol as P
 from .device import Robot, RobotError, eprint, find, scan
 
-CONFIG = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "mbot2" / "config.json"
+def _config_dir() -> Path:
+    if sys.platform == "win32" and os.environ.get("APPDATA"):
+        return Path(os.environ["APPDATA"]) / "mbot2"
+    return Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "mbot2"
+
+
+CONFIG = _config_dir() / "config.json"
 
 
 # ------------------------------------------------------------------ config
 def load_config() -> dict:
     try:
-        return json.loads(CONFIG.read_text())
+        return json.loads(CONFIG.read_text(encoding="utf-8"))
     except Exception:
         return {}
 
@@ -31,7 +37,7 @@ def save_config(**kw) -> None:
     cfg = load_config() | kw
     try:
         CONFIG.parent.mkdir(parents=True, exist_ok=True)
-        CONFIG.write_text(json.dumps(cfg, indent=2) + "\n")
+        CONFIG.write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8")
     except OSError:
         pass
 
@@ -65,6 +71,13 @@ def progress_bar(done: int, total: int) -> None:
 
 
 # ------------------------------------------------------------------ checks
+def read_source(path: Path) -> bytes:
+    src = path.read_bytes()
+    if src.startswith(b"\xef\xbb\xbf"):  # UTF-8 BOM (e.g. Windows Notepad): MicroPython chokes on it
+        src = src[3:]
+    return src
+
+
 ENTRY_RE = re.compile(r"^\s*@\s*event\.\w+", re.M)
 
 
@@ -101,7 +114,7 @@ async def cmd_scan(args) -> int:
 
 async def cmd_upload(args) -> int:
     path = Path(args.file)
-    src = path.read_bytes()
+    src = read_source(path)
     problems = check_source(src, path)
     if problems and not args.force:
         for p in problems:
@@ -115,7 +128,7 @@ async def cmd_upload(args) -> int:
     t0 = time.monotonic()
     async with Robot(target_of(args), on_text=con.text, log=eprint) as robot:
         save_config(device=robot.address)
-        eprint(f"Uploading {path.name} ({len(src)} bytes) as '{args.name}'…")
+        eprint(f"Uploading {path.name} ({len(src)} bytes) as '{args.name}'...")
         sent = await robot.upload(src, args.name, progress_bar)
         eprint(f"Uploaded {sent} bytes in {time.monotonic() - t0:.1f}s.")
         if args.no_reset:
@@ -125,7 +138,7 @@ async def cmd_upload(args) -> int:
         if robot.rebooting.is_set() or await robot.wait_for_reboot(4.0):
             eprint("Robot restarted; the new program is running.")
         else:
-            eprint("Restarting the robot…")
+            eprint("Restarting the robot...")
             if await robot.reboot():
                 eprint("Robot restarted; the new program is running.")
             else:
@@ -139,7 +152,7 @@ async def cmd_upload(args) -> int:
 async def monitor(args, reconnect_wait: float = 0.0) -> int:
     """Show the program's print() output (stdout is mirrored over BLE). Ctrl-C to quit."""
     con = Console()
-    eprint("Monitoring robot output — Ctrl-C to stop.")
+    eprint("Monitoring robot output (Ctrl-C to stop).")
     while True:
         if reconnect_wait:
             await asyncio.sleep(reconnect_wait)
@@ -148,7 +161,7 @@ async def monitor(args, reconnect_wait: float = 0.0) -> int:
                 save_config(device=robot.address)
                 await robot.enable_print()
                 await robot.disconnected.wait()
-                eprint("\n[disconnected — robot restarted or went out of range; reconnecting]")
+                eprint("\n[disconnected: robot restarted or went out of range; reconnecting]")
         except RobotError as e:
             eprint(f"[{e}]")
         except Exception as e:  # BLE stacks throw all sorts of things during a reboot
@@ -238,7 +251,17 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+def _safe_streams() -> None:
+    """Never crash on robot output the console can't encode (e.g. cp1252 consoles/pipes on Windows)."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(errors="replace")  # type: ignore[attr-defined]
+        except Exception:
+            pass
+
+
 def main(argv: list[str] | None = None) -> int:
+    _safe_streams()
     args = build_parser().parse_args(argv)
     try:
         return asyncio.run(args.func(args))
