@@ -1,0 +1,73 @@
+// Helpers that don't need the VS Code API (unit-tested with `node --test`).
+"use strict";
+
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
+
+/** Find an executable the way a shell would, plus uv's tool folder (~/.local/bin), which
+ * often isn't on the PATH VS Code was started with (desktop launchers, Windows). */
+function findExecutable(command, env = process.env, platform = process.platform) {
+  const isWin = platform === "win32";
+  const exts = isWin
+    ? ["", ...(env.PATHEXT || ".EXE;.CMD;.BAT;.COM").split(";").filter(Boolean)]
+    : [""];
+  const tryFile = (p) => {
+    for (const ext of exts) {
+      const f = p + ext;
+      try {
+        if (fs.statSync(f).isFile()) {
+          if (!isWin) fs.accessSync(f, fs.constants.X_OK);
+          return f;
+        }
+      } catch {
+        /* keep looking */
+      }
+    }
+    return null;
+  };
+  if (command.includes("/") || (isWin && command.includes("\\"))) {
+    return tryFile(command.replace(/^~(?=$|[\\/])/, os.homedir()));
+  }
+  const pathVar = env.PATH || env.Path || "";
+  const dirs = pathVar.split(isWin ? ";" : ":").filter(Boolean);
+  dirs.push(path.join(os.homedir(), ".local", "bin"));
+  for (const d of dirs) {
+    const hit = tryFile(path.join(d, command));
+    if (hit) return hit;
+  }
+  return null;
+}
+
+/** Parse `mbot2 scan --json` output. Throws on anything unexpected. */
+function parseScan(stdout) {
+  const data = JSON.parse(stdout.trim().split(/\r?\n/).pop() || "[]");
+  if (!Array.isArray(data)) throw new Error("unexpected scan output");
+  return data.map((r) => ({
+    address: String(r.address),
+    name: String(r.name),
+    rssi: Number(r.rssi),
+    lastUsed: Boolean(r.last_used),
+  }));
+}
+
+function signalBars(rssi) {
+  const level = rssi >= -55 ? 4 : rssi >= -67 ? 3 : rssi >= -78 ? 2 : 1;
+  return "▮".repeat(level) + "▯".repeat(4 - level);
+}
+
+/** Last-used robot first (so Enter picks it, like the CLI), the rest by signal strength. */
+function orderRobots(robots) {
+  return [...robots].sort((a, b) => (b.lastUsed - a.lastUsed) || (b.rssi - a.rssi));
+}
+
+/** Arguments for the upload command. */
+function uploadArgs({ device, file, monitor, verbose }) {
+  const args = [];
+  if (verbose) args.push("-v");
+  args.push("-d", device, "upload", file);
+  if (monitor) args.push("--monitor");
+  return args;
+}
+
+module.exports = { findExecutable, parseScan, signalBars, orderRobots, uploadArgs };

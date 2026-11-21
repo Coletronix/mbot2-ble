@@ -53,3 +53,22 @@ def test_help_works():
     with pytest.raises(SystemExit) as e:
         cli.main(["--help"])
     assert e.value.code == 0
+
+
+def test_scan_json(monkeypatch, tmp_path: Path, capsys):
+    import json
+
+    from mbot2.device import Found
+
+    async def fake_scan(timeout):
+        return [Found("AA:BB:CC:DD:EE:01", "Makeblock_LE01", -50, None),
+                Found("AA:BB:CC:DD:EE:02", "Makeblock_LE02", -70, None)]
+
+    monkeypatch.setattr(cli, "scan", fake_scan)
+    monkeypatch.setattr(cli, "CONFIG", tmp_path / "config.json")
+    cli.save_config(device="AA:BB:CC:DD:EE:02")
+    assert cli.main(["scan", "--json"]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert [r["name"] for r in out] == ["Makeblock_LE01", "Makeblock_LE02"]
+    assert [r["last_used"] for r in out] == [False, True]
+    assert out[0]["rssi"] == -50

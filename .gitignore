@@ -9,3 +9,7 @@ wheels/
 # Virtual environments
 .venv
 .pytest_cache/
+
+# VS Code extension packages
+*.vsix
+node_modules/

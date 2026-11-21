@@ -135,6 +135,13 @@ def check_source(src: bytes, path: Path) -> list[str]:
 # ------------------------------------------------------------------ commands
 async def cmd_scan(args) -> int:
     robots = await scan(args.timeout)
+    if args.json:  # for editor integrations (the VS Code extension's robot picker)
+        last_used = load_config().get("device")
+        print(json.dumps([
+            {"address": r.address, "name": r.name, "rssi": r.rssi, "last_used": r.address == last_used}
+            for r in robots
+        ]))
+        return 0
     if not robots:
         eprint("No Makeblock robots found.")
         return 1
@@ -260,6 +267,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     s = sub.add_parser("scan", help="list Makeblock robots nearby")
     s.add_argument("-t", "--timeout", type=float, default=5.0)
+    s.add_argument("--json", action="store_true", help="print the robots found as JSON (for editor integrations)")
     s.set_defaults(func=cmd_scan)
 
     s = sub.add_parser("upload", aliases=["up"], help="upload a .py file as the robot's program and run it")

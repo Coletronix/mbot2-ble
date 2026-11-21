@@ -1,0 +1,105 @@
+{
+  "name": "mbot2-upload",
+  "displayName": "mBot2 Upload",
+  "description": "One-click upload of the open MicroPython file to a Makeblock mBot2 / CyberPi over Bluetooth",
+  "version": "0.1.0",
+  "publisher": "coletronix",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Coletronix/mbot2-ble.git"
+  },
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": ["Programming Languages", "Other"],
+  "keywords": ["mbot2", "cyberpi", "makeblock", "micropython", "bluetooth"],
+  "main": "./extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "commands": [
+      {
+        "command": "mbot2.upload",
+        "title": "Upload to mBot2",
+        "category": "mBot2",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "mbot2.monitor",
+        "title": "Show Robot Output",
+        "category": "mBot2",
+        "icon": "$(output)"
+      },
+      {
+        "command": "mbot2.stop",
+        "title": "Stop Showing Robot Output (Disconnect)",
+        "category": "mBot2"
+      },
+      {
+        "command": "mbot2.unpinRobot",
+        "title": "Ask Which Robot on Every Upload",
+        "category": "mBot2"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "mbot2.upload",
+          "when": "editorLangId == python && resourceScheme == file",
+          "group": "navigation@-10"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "mbot2.upload",
+          "when": "resourceLangId == python && resourceScheme == file",
+          "group": "navigation@99"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "mbot2.upload",
+        "key": "ctrl+alt+u",
+        "mac": "cmd+alt+u",
+        "when": "editorLangId == python"
+      }
+    ],
+    "configuration": {
+      "title": "mBot2",
+      "properties": {
+        "mbot2.device": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Always upload to this robot (its address, or the last few characters of its name, e.g. `427a`) without asking. Leave empty to choose from a list each time. You can also pin a robot from that list (pin button), which only applies to this workspace."
+        },
+        "mbot2.monitorAfterUpload": {
+          "type": "boolean",
+          "default": true,
+          "description": "After uploading, show the program's print() output in the mBot2 terminal."
+        },
+        "mbot2.scanSeconds": {
+          "type": "number",
+          "default": 4,
+          "minimum": 1,
+          "maximum": 30,
+          "description": "How long to scan for robots before showing the list."
+        },
+        "mbot2.command": {
+          "type": "string",
+          "default": "mbot2",
+          "markdownDescription": "The `mbot2` program (from `uv tool install .` in the mbot2 repository). A full path works too. `~/.local/bin` is searched even if it isn't on VS Code's PATH."
+        },
+        "mbot2.verbose": {
+          "type": "boolean",
+          "default": false,
+          "description": "Log connection settings and every Bluetooth packet in the terminal (for bug reports)."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "test": "node --test test/lib.test.js",
+    "package": "npx --yes @vscode/vsce@3 package --no-dependencies"
+  }
+}

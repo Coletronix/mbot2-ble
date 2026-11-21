@@ -48,11 +48,17 @@ To update later: `git pull` then `uv tool install --reinstall .`
 For development, use `uv tool install --editable .` or run in place with
 `uv run mbot2 ...`. Tests run with `uv run pytest`.
 
+## VS Code button
+
+The [`vscode/`](vscode/README.md) folder has a small VS Code / VSCodium extension: a button at
+the top right of Python files that uploads the open file. Clicking it lists the robots in range;
+click yours, or press Enter for the one used last. Pin a robot to skip the list.
+
 ## Commands
 
 | command | what it does |
 |---|---|
-| `mbot2 scan` | list Makeblock robots nearby |
+| `mbot2 scan [--json]` | list Makeblock robots nearby |
 | `mbot2 upload FILE [-m]` | upload FILE as the robot's program, restart, optionally monitor output |
 | `mbot2 monitor` | stream the running program's `print()` output (reconnects across restarts) |
 | `mbot2 eval EXPR` | evaluate an expression on the robot, print the result |
