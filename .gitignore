@@ -13,3 +13,6 @@ wheels/
 # VS Code extension packages
 *.vsix
 node_modules/
+
+# Standalone builds (packaging/build_cli.py) and the copies bundled into the extension
+vscode/bin/

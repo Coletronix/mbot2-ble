@@ -4,7 +4,7 @@ const assert = require("node:assert");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const { findExecutable, parseScan, signalBars, orderRobots, uploadArgs } = require("../lib");
+const { findExecutable, bundledCandidates, resolveMbot2, parseScan, signalBars, orderRobots, uploadArgs } = require("../lib");
 
 test("parseScan reads mbot2 scan --json", () => {
   const out = '[{"address": "AA:BB", "name": "Makeblock_LE1", "rssi": -60, "last_used": true}]\n';
@@ -46,4 +46,33 @@ test("findExecutable searches PATH and honours PATHEXT on Windows", () => {
   fs.writeFileSync(path.join(winDir, "mbot2.EXE"), "");
   assert.strictEqual(findExecutable("mbot2", { PATH: winDir, PATHEXT: ".EXE;.CMD" }, "win32"), path.join(winDir, "mbot2.EXE"));
   assert.strictEqual(findExecutable("definitely-not-a-program-xyz", { PATH: dir }), null);
+});
+
+test("resolveMbot2 prefers the setting, then the bundled copy, then PATH", () => {
+  const ext = fs.mkdtempSync(path.join(os.tmpdir(), "mbot2-ext-"));
+  const onPath = fs.mkdtempSync(path.join(os.tmpdir(), "mbot2-path-"));
+  const pathExe = path.join(onPath, "mbot2");
+  fs.writeFileSync(pathExe, "#!/bin/sh\n");
+  fs.chmodSync(pathExe, 0o755);
+  const env = { PATH: onPath };
+
+  // Nothing bundled: falls back to PATH.
+  assert.strictEqual(resolveMbot2("", ext, env, "linux", "x64"), pathExe);
+
+  // Bundled copy wins over PATH, and gets its executable bit back (zip extraction can drop it).
+  const bundled = path.join(ext, "bin", "linux-x64", "mbot2");
+  fs.mkdirSync(path.dirname(bundled), { recursive: true });
+  fs.writeFileSync(bundled, "#!/bin/sh\n");
+  fs.chmodSync(bundled, 0o644);
+  assert.strictEqual(resolveMbot2("", ext, env, "linux", "x64"), bundled);
+  if (process.platform !== "win32") assert.ok(fs.statSync(bundled).mode & 0o100);
+
+  // An explicit setting wins over both, and a wrong one is reported (null), not silently replaced.
+  assert.strictEqual(resolveMbot2("mbot2", ext, env, "linux", "x64"), pathExe);
+  assert.strictEqual(resolveMbot2("/nope/mbot2", ext, env, "linux", "x64"), null);
+});
+
+test("bundledCandidates: Windows on ARM falls back to the x64 build", () => {
+  const got = bundledCandidates("/ext", "win32", "arm64").map((p) => path.relative("/ext", p).split(path.sep).join("/"));
+  assert.deepStrictEqual(got, ["bin/win32-arm64/mbot2.exe", "bin/win32-x64/mbot2.exe"]);
 });

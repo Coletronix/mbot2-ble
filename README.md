@@ -1,8 +1,8 @@
 # mbot2 — upload MicroPython to an mBot2 / CyberPi over Bluetooth
 
-A small CLI that uploads a `.py` program to a Makeblock mBot2 (CyberPi) over
-Bluetooth LE, restarts it, and streams the program's `print()` output back.
-No mBlock, no mLink, no USB cable.
+Uploads a `.py` program to a Makeblock mBot2 (CyberPi) over Bluetooth LE, restarts it,
+and streams the program's `print()` output back. Use it from a one-click button in
+VS Code, or as the `mbot2` command-line tool. No mBlock, no mLink, no USB cable.
 
 ```console
 $ mbot2 upload examples/hello.py --monitor
@@ -15,44 +15,84 @@ heartbeat 0
 heartbeat 1
 ```
 
-## Requirements
+## Install
 
-- **[uv](https://docs.astral.sh/uv/getting-started/installation/)**: installs the tool and
-  downloads a suitable Python (3.11+) by itself. You don't need to install Python separately.
-- **git**, to clone this repository.
-- **A Bluetooth LE adapter** (most laptops have one; desktops may need a USB dongle).
-  No pairing is needed.
-- An mBot2 / CyberPi with the mBot2's battery switch **on**.
+You don't need Python, git, or anything else. Pick **one** of these.
 
-| | uv | git | Bluetooth |
-|---|---|---|---|
-| **Linux** | `curl -LsSf https://astral.sh/uv/install.sh \| sh` or your package manager (`pacman -S uv`) | package manager | BlueZ with the `bluetooth` service running: `sudo systemctl enable --now bluetooth`; `bluetoothctl show` should say `Powered: yes` |
-| **Windows 10 (1709+) / 11** | `winget install --id=astral-sh.uv -e` or `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 \| iex"` | `winget install --id Git.Git -e` | Settings → Bluetooth & devices → Bluetooth **On**. Don't pair the robot in Settings; the tool connects without pairing |
-| **macOS** | `brew install uv` or the install script | `xcode-select --install` | Allow your terminal app under System Settings → Privacy & Security → Bluetooth |
+### Option 1: VS Code extension (easiest)
+
+Adds an upload button to VS Code (or VSCodium). Everything it needs is inside one file.
+
+1. Download **[mbot2-upload.vsix](https://github.com/Coletronix/mbot2-ble/releases/latest/download/mbot2-upload.vsix)**.
+2. In VS Code, open the **Extensions** view (`Ctrl+Shift+X`, or the four-squares icon on the left).
+3. Click the **`···`** menu at the top of that view → **Install from VSIX…** → pick the file you downloaded.
+4. Open a robot program (try [`examples/hello.py`](examples/hello.py)) and click the
+   **cloud button** at the top right of the editor. Pick your robot from the list, and that's it.
+
+More about the extension: [vscode/README.md](vscode/README.md).
+
+### Option 2: command-line tool
+
+Copy this line into a terminal and press Enter:
+
+| | |
+|---|---|
+| **Windows** (open *PowerShell* from the Start menu) | `irm https://github.com/Coletronix/mbot2-ble/releases/latest/download/install.ps1 \| iex` |
+| **Linux / macOS** | `curl -LsSf https://github.com/Coletronix/mbot2-ble/releases/latest/download/install.sh \| sh` |
+
+Then open a new terminal and run `mbot2 scan` to check it works. Run the same line again
+later to update.
+
+<details>
+<summary>Or download the program yourself</summary>
+
+| your computer | file |
+|---|---|
+| Windows (64-bit) | [mbot2-windows-x64.exe](https://github.com/Coletronix/mbot2-ble/releases/latest/download/mbot2-windows-x64.exe) |
+| Linux (64-bit PC) | [mbot2-linux-x64](https://github.com/Coletronix/mbot2-ble/releases/latest/download/mbot2-linux-x64) |
+| Linux (ARM 64-bit, e.g. Raspberry Pi OS 64-bit) | [mbot2-linux-arm64](https://github.com/Coletronix/mbot2-ble/releases/latest/download/mbot2-linux-arm64) |
+| macOS (Apple Silicon: M1 and later) | [mbot2-macos-arm64](https://github.com/Coletronix/mbot2-ble/releases/latest/download/mbot2-macos-arm64) |
+
+Rename it to `mbot2` (`mbot2.exe` on Windows) and put it in a folder on your PATH. On
+Linux/macOS, make it runnable with `chmod +x mbot2`. On Windows, a browser download may show
+"Windows protected your PC": click **More info → Run anyway** (the install line above avoids this).
+All files are on the [releases page](https://github.com/Coletronix/mbot2-ble/releases/latest),
+with SHA-256 checksums.
+</details>
+
+### Before your first upload
+
+- **Turn Bluetooth on.** Most laptops have it; desktops may need a USB dongle. Don't pair
+  the robot in your computer's Bluetooth settings: the tool connects without pairing.
+  - **Windows 10 (1709+) / 11:** Settings → Bluetooth & devices → Bluetooth **On**.
+  - **Linux:** BlueZ with the `bluetooth` service running: `sudo systemctl enable --now bluetooth`.
+    `bluetoothctl show` should say `Powered: yes`.
+  - **macOS:** the first time, allow Bluetooth access when asked (or under System Settings →
+    Privacy & Security → Bluetooth, for your terminal app or VS Code).
+- **Turn the mBot2's battery switch on.** USB power alone isn't enough.
+- **Close mBlock.** The robot only accepts one Bluetooth connection at a time.
 
 Tested with a real robot on Linux. Windows and macOS use [bleak](https://github.com/hbldh/bleak)'s
-native backends; CI checks that the tool installs and runs on all three platforms.
+native backends; every release is built and started on all three.
 
-## Install
+### From source
+
+For working on the tool itself. Needs [uv](https://docs.astral.sh/uv/getting-started/installation/),
+which also fetches a suitable Python (3.11+), and git.
 
 ```sh
 git clone https://github.com/Coletronix/mbot2-ble.git
 cd mbot2-ble
-uv tool install .                 # puts `mbot2` on your PATH
+uv tool install .                 # puts `mbot2` on your PATH (~/.local/bin)
 ```
 
 If your shell then says `mbot2` isn't found, run `uv tool update-shell` and open a
-new terminal. (On Windows the tool goes into `%USERPROFILE%\.local\bin`.)
-
-To update later: `git pull` then `uv tool install --reinstall .`
+new terminal. To update later: `git pull` then `uv tool install --reinstall .`
 For development, use `uv tool install --editable .` or run in place with
 `uv run mbot2 ...`. Tests run with `uv run pytest`.
 
-## VS Code button
-
-The [`vscode/`](vscode/README.md) folder has a small VS Code / VSCodium extension: a button at
-the top right of Python files that uploads the open file. Clicking it lists the robots in range;
-click yours, or press Enter for the one used last. Pin a robot to skip the list.
+To build the standalone program yourself: `uv run --with pyinstaller python packaging/build_cli.py`
+(writes `dist/mbot2-<os>-<arch>`).
 
 ## Commands
 
@@ -148,3 +188,16 @@ upload sequence as decoded by
 [dachrisch/mbot2-course-setup](https://github.com/dachrisch/mbot2-course-setup) and
 [weare2plus3/cyberpi-uploader](https://github.com/weare2plus3/cyberpi-uploader) (USB);
 BLE specifics (64-byte writes, print forwarding) found on this robot.
+
+## Releasing
+
+1. Set the same version in `pyproject.toml` and `vscode/package.json` (e.g. `0.2.0`), run
+   `uv lock`, and commit.
+2. `git tag v0.2.0 && git push origin v0.2.0`
+
+The [Release workflow](.github/workflows/release.yml) builds the standalone programs on
+Linux (x64, arm64), Windows and macOS, bundles them into the VS Code extension, publishes a
+GitHub release, and then installs from that release to check the download links. File names
+carry no version, so the `releases/latest/download/...` links in this README always get the
+newest release. To try a build without publishing, run the workflow from the Actions tab
+and download the files from the run.

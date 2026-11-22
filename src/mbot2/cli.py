@@ -245,6 +245,15 @@ async def cmd_forget(args) -> int:
 
 
 # ------------------------------------------------------------------ main
+def _version() -> str:
+    try:
+        from importlib.metadata import version
+
+        return version("mbot2")
+    except Exception:
+        return "unknown"
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="mbot2",
@@ -263,7 +272,8 @@ def build_parser() -> argparse.ArgumentParser:
         "-v", "--verbose", action="store_true",
         help="log connection settings and every Bluetooth packet (for bug reports)",
     )
-    sub = p.add_subparsers(dest="cmd", required=True)
+    p.add_argument("--version", action="version", version=f"mbot2 {_version()}")
+    sub =p.add_subparsers(dest="cmd", required=True)
 
     s = sub.add_parser("scan", help="list Makeblock robots nearby")
     s.add_argument("-t", "--timeout", type=float, default=5.0)

@@ -4,8 +4,8 @@ Adds an **Upload to mBot2** button (cloud icon, top right of the editor) to Pyth
 Click it, pick your robot, and the file is uploaded over Bluetooth and started. The
 program's `print()` output then appears in the **mBot2** terminal.
 
-It drives the `mbot2` command-line tool from this repository, so install that first
-(see the [main README](../README.md)): `uv tool install .` in the repository root.
+Everything it needs is built in: you don't have to install Python or the `mbot2`
+command-line tool.
 
 ## Using it
 
@@ -35,19 +35,25 @@ output view is stopped before each scan or upload. Close mBlock too.
 | `mbot2.device` | *(empty)* | always use this robot (address or name fragment) |
 | `mbot2.monitorAfterUpload` | `true` | show `print()` output after uploading |
 | `mbot2.scanSeconds` | `4` | how long to scan before listing robots |
-| `mbot2.command` | `mbot2` | path to the CLI; `~/.local/bin` is searched even when it's not on VS Code's PATH |
+| `mbot2.command` | *(empty)* | empty: use the built-in uploader. Or `mbot2` / a full path to use a separately installed CLI (`~/.local/bin` is searched even when it's not on VS Code's PATH) |
 | `mbot2.verbose` | `false` | log every Bluetooth packet (for bug reports) |
 
 ## Install
 
-Build the package and install it (needs Node.js):
+1. Download **[mbot2-upload.vsix](https://github.com/Coletronix/mbot2-ble/releases/latest/download/mbot2-upload.vsix)**
+   (one file for Windows, Linux and Apple Silicon Macs).
+2. In VS Code: Extensions view (`Ctrl+Shift+X`) → `···` menu at the top → **Install from VSIX…**
+   → pick the file. Or from a terminal: `code --install-extension mbot2-upload.vsix`
+   (`codium` for VSCodium).
 
-```sh
-cd vscode
-npm run package                                     # makes mbot2-upload-0.1.0.vsix
-code --install-extension mbot2-upload-0.1.0.vsix    # or: codium --install-extension ...
-```
+To update, install a newer `.vsix` the same way.
 
-Or in VS Code: Extensions view → `…` menu → **Install from VSIX…**.
+On other computers (Intel Macs, 32-bit Linux) the extension has no built-in uploader; install
+the command-line tool [from source](../README.md#from-source) and it's used automatically.
 
-Tests: `npm test` (helpers only; no VS Code needed).
+## Building it
+
+`npm test` runs the helper tests (no VS Code needed). `npm run package` makes a `.vsix`
+that uses an `mbot2` installed on your PATH. The release workflow additionally puts the
+standalone programs from `packaging/build_cli.py` in `bin/<platform>-<arch>/`, which the
+extension prefers.

@@ -1,0 +1,166 @@
+name: Release
+
+# Pushing a tag like v0.2.0 builds everything and publishes a GitHub release with:
+#   mbot2-windows-x64.exe, mbot2-linux-x64, mbot2-linux-arm64, mbot2-macos-arm64
+#       standalone command-line tool, no Python needed
+#   mbot2-upload.vsix      VS Code extension with all of the above built in
+#   install.sh, install.ps1   one-line installers for the command-line tool
+#   SHA256SUMS.txt
+# File names carry no version, so .../releases/latest/download/<name> links never go stale.
+#
+# Run it by hand (Actions tab -> Release -> Run workflow) to build without publishing;
+# the files are then attached to the run as artifacts.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - packaging/**
+      - vscode/**
+      - pyproject.toml
+      - uv.lock
+      - .github/workflows/release.yml
+
+permissions:
+  contents: read
+
+jobs:
+  check-version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag must match pyproject.toml and vscode/package.json
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          py=$(grep -m1 '^version' pyproject.toml | cut -d'"' -f2)
+          js=$(node -p 'require("./vscode/package.json").version')
+          echo "tag=$tag pyproject=$py package.json=$js"
+          if [ "$tag" != "$py" ] || [ "$tag" != "$js" ]; then
+            echo "::error::Set version = \"$tag\" in pyproject.toml and vscode/package.json, commit, then tag again."
+            exit 1
+          fi
+
+  cli:
+    needs: check-version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Oldest available runners for Linux: the binary needs at least this glibc.
+          - { os: ubuntu-22.04, target: linux-x64 }
+          - { os: ubuntu-22.04-arm, target: linux-arm64 }
+          - { os: windows-latest, target: windows-x64 }
+          - { os: macos-latest, target: macos-arm64 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Build standalone executable
+        run: uv run --locked --with "pyinstaller>=6.11,<7" python packaging/build_cli.py
+      - name: Smoke test
+        shell: bash
+        timeout-minutes: 2
+        run: |
+          exe=dist/mbot2-${{ matrix.target }}
+          [ -f "$exe.exe" ] && exe="$exe.exe"
+          "$exe" --version
+          "$exe" --help > /dev/null
+          # CI machines have no Bluetooth, so the scan fails, but it must fail with a
+          # Bluetooth error, not because the build is missing a module.
+          out=$("$exe" scan -t 2 2>&1) || true
+          echo "$out"
+          if echo "$out" | grep -E "ModuleNotFoundError|ImportError|No module named"; then exit 1; fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli-${{ matrix.target }}
+          path: dist/mbot2-*
+          if-no-files-found: error
+
+  vsix:
+    needs: cli
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: cli-*
+          path: cli
+          merge-multiple: true
+      - name: Put the executables where the extension looks for them (bin/<platform>-<arch>)
+        run: |
+          put() { mkdir -p "vscode/bin/$2"; cp "cli/$1" "vscode/bin/$2/$3"; chmod +x "vscode/bin/$2/$3"; }
+          put mbot2-linux-x64       linux-x64    mbot2
+          put mbot2-linux-arm64     linux-arm64  mbot2
+          put mbot2-windows-x64.exe win32-x64    mbot2.exe
+          put mbot2-macos-arm64     darwin-arm64 mbot2
+          ls -lR vscode/bin
+      - name: Test and package
+        working-directory: vscode
+        run: |
+          npm test
+          mkdir -p ../dist
+          npx --yes @vscode/vsce@3 package --no-dependencies -o ../dist/mbot2-upload.vsix
+      - name: Check the extension's built-in copy runs
+        run: |
+          mkdir unpacked && cd unpacked && unzip -q ../dist/mbot2-upload.vsix
+          extension/bin/linux-x64/mbot2 --version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vsix
+          path: dist/mbot2-upload.vsix
+          if-no-files-found: error
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [cli, vsix]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp packaging/install.sh packaging/install.ps1 out/
+          cd out
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes \
+            --notes-file ../packaging/release-notes.md *
+
+  # Install from the release just published, exactly as the README tells people to.
+  test-install:
+    needs: publish
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: install.sh
+        if: runner.os != 'Windows'
+        run: |
+          curl -LsSf https://github.com/${{ github.repository }}/releases/latest/download/install.sh | sh
+          ~/.local/bin/mbot2 --version
+      - name: install.ps1
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          irm https://github.com/${{ github.repository }}/releases/latest/download/install.ps1 | iex
+          & "$env:LOCALAPPDATA\Programs\mbot2\mbot2.exe" --version
+      - name: The VSIX downloads
+        shell: bash
+        run: |
+          curl -fLsS -o mbot2-upload.vsix https://github.com/${{ github.repository }}/releases/latest/download/mbot2-upload.vsix
+          ls -l mbot2-upload.vsix

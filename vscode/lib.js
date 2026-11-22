@@ -39,6 +39,41 @@ function findExecutable(command, env = process.env, platform = process.platform)
   return null;
 }
 
+/** Folders under bin/ to try for this computer, best first. The release build puts a
+ * standalone mbot2 there for each supported platform (see packaging/build_cli.py). Windows on
+ * ARM runs the x64 build under emulation. */
+function bundledCandidates(extensionPath, platform = process.platform, arch = process.arch) {
+  const exe = platform === "win32" ? "mbot2.exe" : "mbot2";
+  const dirs = [`${platform}-${arch}`];
+  if (platform === "win32" && arch === "arm64") dirs.push("win32-x64");
+  return dirs.map((d) => path.join(extensionPath, "bin", d, exe));
+}
+
+/** Which mbot2 to run: the `mbot2.command` setting if set, else the copy bundled with the
+ * extension, else `mbot2` from the PATH (a source install). Returns a path or null. */
+function resolveMbot2(setting, extensionPath, env = process.env, platform = process.platform, arch = process.arch) {
+  const command = (setting || "").trim();
+  if (command) return findExecutable(command, env, platform);
+  for (const f of bundledCandidates(extensionPath, platform, arch)) {
+    if (fs.existsSync(f)) {
+      // A .vsix is a zip file, which doesn't always keep the "executable" permission.
+      if (platform !== "win32") {
+        try {
+          fs.accessSync(f, fs.constants.X_OK);
+        } catch {
+          try {
+            fs.chmodSync(f, 0o755);
+          } catch {
+            /* read-only install; fall through to the error below */
+          }
+        }
+      }
+      return f;
+    }
+  }
+  return findExecutable("mbot2", env, platform);
+}
+
 /** Parse `mbot2 scan --json` output. Throws on anything unexpected. */
 function parseScan(stdout) {
   const data = JSON.parse(stdout.trim().split(/\r?\n/).pop() || "[]");
@@ -70,4 +105,4 @@ function uploadArgs({ device, file, monitor, verbose }) {
   return args;
 }
 
-module.exports = { findExecutable, parseScan, signalBars, orderRobots, uploadArgs };
+module.exports = { findExecutable, bundledCandidates, resolveMbot2, parseScan, signalBars, orderRobots, uploadArgs };
