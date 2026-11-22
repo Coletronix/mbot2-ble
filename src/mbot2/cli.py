@@ -311,6 +311,30 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+def bluetooth_message(e: BleakError) -> str:
+    """A Bluetooth error, explained for someone who has never configured Bluetooth."""
+    reason = getattr(getattr(e, "reason", None), "name", "")
+    text = str(e)
+    if reason == "POWERED_OFF":
+        return "Bluetooth is turned off on this computer. Turn it on and try again."
+    if reason in ("NO_BLUETOOTH", "NO_BLE_CENTRAL_ROLE"):
+        return (
+            "No usable Bluetooth found on this computer. If it has Bluetooth, make sure it's "
+            "turned on (and not disabled in airplane mode); otherwise plug in a Bluetooth 4.0+ (LE) USB adapter."
+        )
+    if reason.startswith("DENIED"):
+        return (
+            "This program isn't allowed to use Bluetooth. On macOS, allow it under System Settings "
+            "-> Privacy & Security -> Bluetooth (for your terminal app or VS Code)."
+        )
+    if "org.bluez" in text:
+        return (
+            "Linux's Bluetooth service (BlueZ) isn't running. Start it with "
+            "`sudo systemctl enable --now bluetooth` (install the `bluez` package first if needed)."
+        )
+    return f"Bluetooth: {text}"
+
+
 def _safe_streams() -> None:
     """Never crash on robot output the console can't encode (e.g. cp1252 consoles/pipes on Windows)."""
     for stream in (sys.stdout, sys.stderr):
@@ -333,5 +357,5 @@ def main(argv: list[str] | None = None) -> int:
         eprint(f"error: {e}")
         return 1
     except BleakError as e:
-        eprint(f"error: Bluetooth: {e}")
+        eprint(f"error: {bluetooth_message(e)}")
         return 1
