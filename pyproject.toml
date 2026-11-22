@@ -1,6 +1,6 @@
 [project]
 name = "mbot2"
-version = "0.1.0"
+version = "0.2.0"
 description = "Upload MicroPython programs to a Makeblock mBot2 / CyberPi over Bluetooth LE"
 readme = "README.md"
 license = "MIT"

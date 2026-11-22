@@ -2,7 +2,7 @@
   "name": "mbot2-upload",
   "displayName": "mBot2 Upload",
   "description": "One-click upload of the open MicroPython file to a Makeblock mBot2 / CyberPi over Bluetooth. Nothing else to install.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "coletronix",
   "license": "MIT",
   "repository": {

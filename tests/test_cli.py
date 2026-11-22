@@ -72,3 +72,16 @@ def test_scan_json(monkeypatch, tmp_path: Path, capsys):
     assert [r["name"] for r in out] == ["Makeblock_LE01", "Makeblock_LE02"]
     assert [r["last_used"] for r in out] == [False, True]
     assert out[0]["rssi"] == -50
+
+
+def test_bluetooth_message_explains_common_failures():
+    from bleak.exc import BleakBluetoothNotAvailableError, BleakBluetoothNotAvailableReason as R, BleakError
+
+    from mbot2.cli import bluetooth_message
+
+    assert "turned off" in bluetooth_message(BleakBluetoothNotAvailableError("off", R.POWERED_OFF))
+    assert "No usable Bluetooth" in bluetooth_message(BleakBluetoothNotAvailableError("x", R.NO_BLUETOOTH))
+    assert "allowed" in bluetooth_message(BleakBluetoothNotAvailableError("x", R.DENIED_BY_USER))
+    msg = "[org.freedesktop.DBus.Error.ServiceUnknown] The name org.bluez was not provided by any .service files"
+    assert "systemctl enable --now bluetooth" in bluetooth_message(BleakError(msg))
+    assert bluetooth_message(BleakError("weird")) == "Bluetooth: weird"
