@@ -1,13 +1,15 @@
-// mBot2 upload button for VS Code: runs the `mbot2` CLI from this repository.
+// mBot2 upload button for VS Code. Runs the `mbot2` CLI: the standalone copy bundled under
+// bin/ by the release build, or one installed separately.
 "use strict";
 
 const vscode = require("vscode");
 const { execFile } = require("child_process");
 const path = require("path");
-const { findExecutable, parseScan, signalBars, orderRobots, uploadArgs } = require("./lib");
+const { resolveMbot2, parseScan, signalBars, orderRobots, uploadArgs } = require("./lib");
 
 const TERMINAL_NAME = "mBot2";
 const PINNED_KEY = "mbot2.pinnedRobot"; // per-workspace "always use this robot"
+const PROJECT_URL = "https://github.com/Coletronix/mbot2-ble#readme";
 
 let statusItem;
 
@@ -188,16 +190,17 @@ async function runInTerminal(exe, args, cwd) {
   return term;
 }
 
-async function mbot2Executable() {
-  const command = config().get("command") || "mbot2";
-  const exe = findExecutable(command);
+async function mbot2Executable(context) {
+  const command = (config().get("command") || "").trim();
+  const exe = resolveMbot2(command, context.extensionPath);
   if (exe) return exe;
-  const pick = await vscode.window.showErrorMessage(
-    `mBot2: couldn't find the \`${command}\` program. Install it with \`uv tool install .\` from the mbot2 repository, ` +
-      "or set its full path in the mbot2.command setting.",
-    "Open Settings",
-  );
-  if (pick) vscode.commands.executeCommand("workbench.action.openSettings", "mbot2.command");
+  const message = command
+    ? `mBot2: couldn't find \`${command}\` (the mbot2.command setting). Fix the path, or clear the setting to use the copy built into this extension.`
+    : `mBot2: this extension has no built-in uploader for this computer (${process.platform}-${process.arch}). ` +
+      "Install the mbot2 command-line tool (see the project page), or set its path in the mbot2.command setting.";
+  const pick = await vscode.window.showErrorMessage(message, "Open Settings", "Project Page");
+  if (pick === "Open Settings") vscode.commands.executeCommand("workbench.action.openSettings", "mbot2.command");
+  if (pick === "Project Page") vscode.env.openExternal(vscode.Uri.parse(PROJECT_URL));
   return null;
 }
 
@@ -224,7 +227,7 @@ async function upload(context, uri) {
   if (uri.scheme !== "file") return showCliError("only files saved on this computer can be uploaded.");
   if (doc && doc.isDirty && !(await doc.save())) return;
 
-  const exe = await mbot2Executable();
+  const exe = await mbot2Executable(context);
   if (!exe) return;
   const robot = await choose(context, exe);
   if (!robot) return;
@@ -243,7 +246,7 @@ async function upload(context, uri) {
 }
 
 async function monitor(context) {
-  const exe = await mbot2Executable();
+  const exe = await mbot2Executable(context);
   if (!exe) return;
   const robot = await choose(context, exe);
   if (!robot) return;

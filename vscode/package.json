@@ -1,7 +1,7 @@
 {
   "name": "mbot2-upload",
   "displayName": "mBot2 Upload",
-  "description": "One-click upload of the open MicroPython file to a Makeblock mBot2 / CyberPi over Bluetooth",
+  "description": "One-click upload of the open MicroPython file to a Makeblock mBot2 / CyberPi over Bluetooth. Nothing else to install.",
   "version": "0.1.0",
   "publisher": "coletronix",
   "license": "MIT",
@@ -87,8 +87,8 @@
         },
         "mbot2.command": {
           "type": "string",
-          "default": "mbot2",
-          "markdownDescription": "The `mbot2` program (from `uv tool install .` in the mbot2 repository). A full path works too. `~/.local/bin` is searched even if it isn't on VS Code's PATH."
+          "default": "",
+          "markdownDescription": "Leave empty to use the uploader built into this extension. To use a separately installed `mbot2` command-line tool instead, enter `mbot2` or its full path (`~/.local/bin` is searched even if it isn't on VS Code's PATH)."
         },
         "mbot2.verbose": {
           "type": "boolean",
